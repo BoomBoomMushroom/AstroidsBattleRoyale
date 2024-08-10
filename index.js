@@ -10,23 +10,32 @@ canvas.width = window.innerWidth
 canvas.height = window.innerHeight
 
 let imageAssets = {
-    "ship": null
+    "ship": null,
+    "shipThrust": null,
 }
 loadImage("./assets/ship.png", "ship", 0.15)
+loadImage("./assets/ship_thrust.png", "shipThrust", 0.15)
 
 let shipColoredImages = {}
 let keyboard = {}
 let lastFrame = Date.now()
 
+let shipAccel = 3
+let maxSpeed = 300
+let minSpeed = 2
+
 let rotateSpeed = 150
 let bulletSpeed = 1
 let shootCooldown = 0.25
 let hyperspaceCooldown = 1
+let friction = 0.1
 
 let bullets = []
 
+let mouse = {x: 0, y: 0}
+
 let shipEntity = {
-    x: 90, y: 90, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0
+    x: 90, y: 90, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0, isThrusting: false
 }
 
 function shootBullet(x, y, angle){
@@ -35,6 +44,7 @@ function shootBullet(x, y, angle){
         y: y,
         vx: Math.cos(angle) * bulletSpeed,
         vy: Math.sin(angle) * bulletSpeed,
+        lifespan: 10,
     })
 }
 
@@ -50,25 +60,11 @@ function loadImage(src, assetName, scale=1){
         imgCanvas.height = newHeight
         let imgCtx = imgCanvas.getContext("2d")
         imgCtx.drawImage(img, 0, 0, newWidth, newHeight)
-        let imageData = imgCtx.getImageData(0, 0, newWidth, newHeight)
-        imageAssets[assetName] = imageData
+
+        let imgScaled = new Image();
+        imgScaled.src = imgCanvas.toDataURL();
+        imageAssets[assetName] = imgScaled
     }
-}
-
-function modulateAsset(assetName, color){
-    let asset = imageAssets[assetName]
-
-    // make new clone of image so we dont override the original
-    let data = new Uint8ClampedArray(asset.data)
-    data.set(asset.data)
-
-    let imageData = new ImageData(data, asset.width, asset.height)
-    for (let i = 0; i < data.length; i += 4) {
-        data[i] = color.r
-        data[i + 1] = color.g
-        data[i + 2] = color.b
-    }
-    return imageData
 }
 
 function drawPixel(x, y, color){
@@ -87,11 +83,14 @@ function drawGlowingPixel(x, y, color, intensity){
     ctx.restore()
 }
 
-function drawImage(x, y, rotation=0, image){
+function drawImage(x, y, rotation=0, image, pivotPoint={x:Infinity, y:Infinity}){
+    if(image == null){return}
+
     ctx.save()
-    
+
     let pivotX = x + image.width/2
     let pivotY = y + image.height/2
+    
     ctx.translate(pivotX, pivotY)
     let rads = rotation * deg2rad
     ctx.rotate(rads)
@@ -131,34 +130,31 @@ function rotatePoint(point, pivotPoint, angle = 0){
     return point
 }
 
-function drawShip(data, color){
-    let shipImage = shipColoredImages[color]
+function getShipHitboxPoints(shipData){
+    let shipImage = imageAssets["ship"]
     let shipImageWidth = shipImage.width
     let shipImageHeight = shipImage.height
 
-    drawImage(data.x, data.y, data.rotation, shipImage)
-
     // ship hit box points
-    let pointA = {x: data.x + shipImageWidth/2, y: data.y}
-    let pointB = {x: data.x + 4, y: data.y + shipImageHeight - 7}
-    let pointC = {x: data.x + shipImageWidth - 4, y: pointB.y}
+    let pointA = {x: shipData.x + shipImageWidth/2, y: shipData.y}
+    let pointB = {x: shipData.x + 4, y: shipData.y + shipImageHeight - 7}
+    let pointC = {x: shipData.x + shipImageWidth - 4, y: pointB.y}
 
     // transform positions based off rotation
-    let pivotPoint = {x: data.x + shipImageWidth/2, y: data.y + shipImageHeight/2}
-    let angle = data.rotation * deg2rad
+    let pivotPoint = {x: shipData.x + shipImageWidth/2, y: shipData.y + shipImageHeight/2}
+    let angle = shipData.rotation * deg2rad
 
     pointA = rotatePoint(pointA, pivotPoint, angle)
     pointB = rotatePoint(pointB, pivotPoint, angle)
     pointC = rotatePoint(pointC, pivotPoint, angle)
+    
+    return [pointA, pointB, pointC];
+}
 
+function drawShip(data){
+    let shipImage = data.isThrusting ? imageAssets["shipThrust"] : imageAssets["ship"]
 
-
-    // draw said points
-    drawGlowingPixel(pivotPoint.x, pivotPoint.y, "#FFFFFF", 0)
-
-    drawGlowingPixel(pointA.x - (pixelSize/2), pointA.y - (pixelSize/2), "#FFFFFF", 10)
-    drawGlowingPixel(pointB.x - (pixelSize/2), pointB.y - (pixelSize/2), "#FFFFFF", 10)
-    drawGlowingPixel(pointC.x - (pixelSize/2), pointC.y - (pixelSize/2), "#FFFFFF", 10)
+    drawImage(data.x, data.y, data.rotation, shipImage)
 }
 
 function draw(){
@@ -172,9 +168,16 @@ function draw(){
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     
     for(let i=0; i<bullets.length; i++){
-        bullets[i].x += bullets[i].vx
-        bullets[i].y += bullets[i].vy
         let b = bullets[i]
+        b.x += b.vx
+        b.y += b.vy
+        b.lifespan -= deltaTime
+        
+        if(b.lifespan <= 0){
+            bullets.splice(i, 1)
+            i -= 1 // to counteract i++; keeps i the same and continues reading the array
+        }
+
         drawGlowingPixel(b.x, b.y, "rgba(255, 255, 255, 1)", 15)
     }
 
@@ -185,50 +188,43 @@ function draw(){
         shipEntity.rotation += rotateSpeed * deltaTime
     }
 
+    if(keyboard["w"]){
+        shipEntity.isThrusting = true
+        shipEntity.vx += Math.cos( (shipEntity.rotation - 90) * deg2rad ) * shipAccel
+        shipEntity.vy += Math.sin( (shipEntity.rotation - 90) * deg2rad ) * shipAccel
+    } else{ shipEntity.isThrusting = false }
+    
+    // Slow ship down with friction, max speed, and move ship based of velocity
+    if(shipEntity.vx != 0){ shipEntity.vx += friction * -Math.sign(shipEntity.vx) * deltaTime }
+    if(shipEntity.vy != 0){ shipEntity.vy += friction * -Math.sign(shipEntity.vy) * deltaTime }
+
+    if(Math.abs(shipEntity.vx) < minSpeed){ shipEntity.vx = 0 }
+    if(Math.abs(shipEntity.vy) < minSpeed){ shipEntity.vy = 0 }
+
+    if(Math.abs(shipEntity.vx) >= maxSpeed){ shipEntity.vx = maxSpeed * Math.sign(shipEntity.vx) }
+    if(Math.abs(shipEntity.vy) >= maxSpeed){ shipEntity.vy = maxSpeed * Math.sign(shipEntity.vy) }
+
+    shipEntity.x += shipEntity.vx * deltaTime
+    shipEntity.y += shipEntity.vy * deltaTime
+
+    //console.log(shipEntity)
+
     if(imageAssets["ship"] != null){
-        // precompile colored ship images
-        let shipColors = [
-            ["red", {r: 245, g: 73, b: 73}],
-            ["blue", {r: 73, g: 142, b: 245}],
-            ["yellow", {r: 245, g: 255, b: 73}],
-            ["pink", {r: 239, g: 73, b: 245}],
-        ]
-        if(Object.keys(shipColoredImages).length < shipColors.length){
-            for(let i=0;i<shipColors.length;i++){
-                let clrName = shipColors[i][0]
-                let clrValue = shipColors[i][1]
-                if(!(clrName in shipColoredImages)){
-                    let imageData = modulateAsset("ship", clrValue)
+        drawShip(shipEntity)
 
-                    // convert to image for drawImage
-                    let tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = imageData.width;
-                    tempCanvas.height = imageData.height;
-                    let tempCtx = tempCanvas.getContext('2d');
-                    tempCtx.putImageData(imageData, 0, 0);
-                    const img = new Image();
-                    img.src = tempCanvas.toDataURL();
-
-                    shipColoredImages[clrName] = img
-                }
-            }
-        }
-        // done w/ precompile
-        
         // the image is rotated by 90 degrees so add it to shoot and bullet calc
-        let pivotX = shipEntity.x + shipColoredImages["red"].width/2
-        let pivotY = shipEntity.y + shipColoredImages["red"].height/2
+        let shipImage = imageAssets["ship"]
+        let pivotX = shipEntity.x + shipImage.width/2
+        let pivotY = shipEntity.y + shipImage.height/2
         let quarterTurnRad = 90 * deg2rad
-        let shootRadius = (shipColoredImages["red"].height / 2) - 10
+        let shootRadius = (shipImage.height/2) - 10
         let shootAngle = (shipEntity.rotation * deg2rad) - quarterTurnRad
         let bulletShotPosition = {x: Math.cos(shootAngle) * shootRadius + pivotX, y: Math.sin(shootAngle) * shootRadius + pivotY}
 
         if(keyboard[" "] && shipEntity.shootCooldown <= 0){
             shipEntity.shootCooldown = shootCooldown
-            shootBullet(bulletShotPosition.x, bulletShotPosition.y, shootAngle)
+            shootBullet(bulletShotPosition.x - (pixelSize/2), bulletShotPosition.y - (pixelSize/2), shootAngle)
         }
-
-        drawShip(shipEntity, "red")
     }
 
     lastFrame = Date.now()
@@ -242,4 +238,7 @@ window.addEventListener("keydown", (e)=>{
 })
 window.addEventListener("keyup", (e)=>{
     keyboard[e.key] = false
+})
+window.addEventListener("mousemove", (e)=>{
+    mouse = {x: e.clientX, y: e.clientY}
 })
