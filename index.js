@@ -23,14 +23,17 @@ let lastFrame = Date.now()
 let shipAccel = 3
 let maxSpeed = 300
 let minSpeed = 2
+let worldSize = [500, 500]
 
 let rotateSpeed = 150
-let bulletSpeed = 1
+let bulletSpeed = 300
+let asteroidSpeed = [1, 5]
 let shootCooldown = 0.25
 let hyperspaceCooldown = 1
 let friction = 0.1
 
 let bullets = []
+let asteroids = []
 
 let mouse = {x: 0, y: 0}
 
@@ -38,14 +41,79 @@ let shipEntity = {
     x: 90, y: 90, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0, isThrusting: false
 }
 
+function randomInt(min, max){
+    return Math.floor(Math.random() * (max - min + 1)) + min
+}
+function randomFloat(min, max){
+    return (Math.random() * (max - min + 1)) + min
+}
+
 function shootBullet(x, y, angle){
     bullets.push({
         x: x,
         y: y,
-        vx: Math.cos(angle) * bulletSpeed,
-        vy: Math.sin(angle) * bulletSpeed,
+        vx: (Math.cos(angle) * bulletSpeed) + shipEntity.vx,
+        vy: (Math.sin(angle) * bulletSpeed) + shipEntity.vy,
         lifespan: 10,
     })
+}
+
+function randomAsteroid(x, y, points=7, radius=10){
+    let minRadius = radius * 0.5
+    let maxRadius = radius * 2
+
+    let velocityAngle = randomFloat(0, 360)
+    let asteroidSpeedLocal = randomFloat(asteroidSpeed[0], asteroidSpeed[1])
+
+    let newAsteroid = {
+        x: x,
+        y: y,
+        vx: Math.cos(velocityAngle) * asteroidSpeedLocal,
+        vy: Math.sin(velocityAngle) * asteroidSpeedLocal,
+        points: []
+    }
+    
+    let angleIncrement = 360 / points
+    for(let i=0; i < 360; i+= angleIncrement){
+        let r = randomFloat(minRadius, maxRadius)
+        let x = Math.cos(i * deg2rad) * r
+        let y = Math.sin(i * deg2rad) * r
+        newAsteroid.points.push({x: x, y: y})
+    }
+
+    return newAsteroid
+}
+
+function spawnRandomAsteroid(points=7){
+    let spawnOnRoof = randomInt(0, 1) == 1
+
+    let newAsteroid = randomAsteroid(
+        spawnOnRoof ? (randomInt(0, worldSize[0])) : (randomInt(0, 1) == 0 ? 0 : worldSize[1]),
+        spawnOnRoof == false ? (randomInt(0, worldSize[1])) : (randomInt(0, 1) == 0 ? 0 : worldSize[0]),
+        points,
+        10,
+    )
+
+    asteroids.push(newAsteroid)
+}
+
+function drawAsteroid(data){
+    let startPoint = data.points[0]
+    let offsetX = data.x
+    let offsetY = data.y
+
+    ctx.strokeStyle = "#FFFFFF"
+    ctx.lineWidth = pixelSize
+    
+    ctx.beginPath()
+    ctx.moveTo(startPoint.x + offsetX, startPoint.y + offsetY)
+    for(let i=1; i<data.points.length; i++){
+        let pointB = data.points[i]
+        ctx.lineTo(pointB.x + offsetX, pointB.y + offsetY);
+    }
+    ctx.lineTo(startPoint.x + offsetX, startPoint.y + offsetY)
+    ctx.closePath()
+    ctx.stroke()
 }
 
 function loadImage(src, assetName, scale=1){
@@ -157,6 +225,10 @@ function drawShip(data){
     drawImage(data.x, data.y, data.rotation, shipImage)
 }
 
+function worldWrap(x, y){
+    
+}
+
 function draw(){
     let deltaTime = Date.now() - lastFrame
     deltaTime /= 1000 // get it in seconds; ex 800ms -> 0.8s
@@ -169,8 +241,8 @@ function draw(){
     
     for(let i=0; i<bullets.length; i++){
         let b = bullets[i]
-        b.x += b.vx
-        b.y += b.vy
+        b.x += b.vx * deltaTime
+        b.y += b.vy * deltaTime
         b.lifespan -= deltaTime
         
         if(b.lifespan <= 0){
@@ -179,6 +251,14 @@ function draw(){
         }
 
         drawGlowingPixel(b.x, b.y, "rgba(255, 255, 255, 1)", 15)
+    }
+
+    for(let i=0; i<asteroids.length; i++){
+        let a = asteroids[i]
+        a.x += a.vx * deltaTime
+        a.y += a.vy * deltaTime
+
+        drawAsteroid(a)
     }
 
     if(keyboard["a"]){
