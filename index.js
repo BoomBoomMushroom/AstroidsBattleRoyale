@@ -6,9 +6,6 @@ const pixelSize = 5
 
 ctx.globalCompositeOperation = 'destination-over';
 
-canvas.width = window.innerWidth
-canvas.height = window.innerHeight
-
 let imageAssets = {
     "ship": null,
     "shipThrust": null,
@@ -23,14 +20,18 @@ let lastFrame = Date.now()
 let shipAccel = 3
 let maxSpeed = 300
 let minSpeed = 2
-let worldSize = [500, 500]
+let worldSize = [800, 800]
+canvas.width = worldSize[0]
+canvas.height = worldSize[1]
 
 let rotateSpeed = 150
 let bulletSpeed = 300
-let asteroidSpeed = [1, 5]
+let asteroidSpeed = [150, 150]
+let asteroidDetail = 12
+let maxAsteroidSplits = 3
 let shootCooldown = 0.25
 let hyperspaceCooldown = 1
-let friction = 0.1
+let friction = 15
 
 let bullets = []
 let asteroids = []
@@ -52,8 +53,8 @@ function shootBullet(x, y, angle){
     bullets.push({
         x: x,
         y: y,
-        vx: (Math.cos(angle) * bulletSpeed) + shipEntity.vx,
-        vy: (Math.sin(angle) * bulletSpeed) + shipEntity.vy,
+        vx: (Math.cos(angle) * bulletSpeed),// + shipEntity.vx,
+        vy: (Math.sin(angle) * bulletSpeed),// + shipEntity.vy,
         lifespan: 10,
     })
 }
@@ -70,7 +71,9 @@ function randomAsteroid(x, y, points=7, radius=10){
         y: y,
         vx: Math.cos(velocityAngle) * asteroidSpeedLocal,
         vy: Math.sin(velocityAngle) * asteroidSpeedLocal,
-        points: []
+        points: [],
+        radius: radius,
+        splits: 0
     }
     
     let angleIncrement = 360 / points
@@ -80,6 +83,8 @@ function randomAsteroid(x, y, points=7, radius=10){
         let y = Math.sin(i * deg2rad) * r
         newAsteroid.points.push({x: x, y: y})
     }
+
+    newAsteroid.points.push(newAsteroid.points[0])
 
     return newAsteroid
 }
@@ -91,7 +96,7 @@ function spawnRandomAsteroid(points=7){
         spawnOnRoof ? (randomInt(0, worldSize[0])) : (randomInt(0, 1) == 0 ? 0 : worldSize[1]),
         spawnOnRoof == false ? (randomInt(0, worldSize[1])) : (randomInt(0, 1) == 0 ? 0 : worldSize[0]),
         points,
-        10,
+        25,
     )
 
     asteroids.push(newAsteroid)
@@ -103,7 +108,7 @@ function drawAsteroid(data){
     let offsetY = data.y
 
     ctx.strokeStyle = "#FFFFFF"
-    ctx.lineWidth = pixelSize
+    ctx.lineWidth = 1
     
     ctx.beginPath()
     ctx.moveTo(startPoint.x + offsetX, startPoint.y + offsetY)
@@ -111,7 +116,6 @@ function drawAsteroid(data){
         let pointB = data.points[i]
         ctx.lineTo(pointB.x + offsetX, pointB.y + offsetY);
     }
-    ctx.lineTo(startPoint.x + offsetX, startPoint.y + offsetY)
     ctx.closePath()
     ctx.stroke()
 }
@@ -182,6 +186,33 @@ function pointInTriangle(point, v1, v2, v3){
     return !(hasNeg && hasPos)
 }
 
+function pointInPolygon(pointToTest, points, pointsOffset={x:0, y:0}){
+    let x = pointToTest.x
+    let y = pointToTest.y
+
+    let inside = false
+    for(let i=0, j=points.length-1; i < points.length; j = i++){
+        let xi = points[i].x + pointsOffset.x
+        let yi = points[i].y + pointsOffset.y
+
+        let xj = points[j].x + pointsOffset.x
+        let yj = points[j].y + pointsOffset.y
+
+        /*
+        let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / yj - yi + xi);
+        if(intersect){
+            inside = !inside
+        }
+        */
+        if(yi > y && yj <= y || yj > y && yi <= y){
+            if(xi + (y - yi) / (yj - yi) * (xj - xi) < x){
+                inside = !inside
+            }
+        }
+    }
+    return inside
+}
+
 function rotatePoint(point, pivotPoint, angle = 0){
     let sin = Math.sin(angle)
     let cos = Math.cos(angle)
@@ -226,7 +257,13 @@ function drawShip(data){
 }
 
 function worldWrap(x, y){
-    
+    if(x > worldSize[0]){ x = 0 }
+    else if(x < 0){ x = worldSize[0] }
+
+    if(y > worldSize[1]){ y = 0 }
+    else if(y < 0){ y = worldSize[1] }
+
+    return [x, y]
 }
 
 function draw(){
@@ -245,10 +282,48 @@ function draw(){
         b.y += b.vy * deltaTime
         b.lifespan -= deltaTime
         
+        let newCords = worldWrap(b.x, b.y)
+        b.x = newCords[0]
+        b.y = newCords[1]
+
         if(b.lifespan <= 0){
             bullets.splice(i, 1)
             i -= 1 // to counteract i++; keeps i the same and continues reading the array
         }
+
+        // check if we hit an asteroid
+        let didRemoveBullet = false
+
+        for(let j=0; j<asteroids.length; j++){
+            let offset = {x: asteroids[j].x, y: asteroids[j].y}
+            let collision = pointInPolygon(b, asteroids[j].points, offset)
+            if(collision){
+                let asteroidRadius = asteroids[j].radius
+
+                // spawn 2 new smaller asteroids
+                let newSplits = asteroids[j].splits + 1
+                for(let i=0; i<2; i++){
+                    if(newSplits >= maxAsteroidSplits){ continue }
+                    let newAsteroid = randomAsteroid(
+                        offset.x,
+                        offset.y,
+                        asteroidDetail,
+                        asteroidRadius/2,
+                    )
+                    newAsteroid.splits = newSplits
+                    asteroids.push(newAsteroid)
+                }
+                
+                asteroids.splice(j, 1)
+                j--
+                bullets.splice(i, 1)
+                i--
+                
+                didRemoveBullet = true
+                break
+            }
+        }
+        if(didRemoveBullet){continue}
 
         drawGlowingPixel(b.x, b.y, "rgba(255, 255, 255, 1)", 15)
     }
@@ -257,6 +332,10 @@ function draw(){
         let a = asteroids[i]
         a.x += a.vx * deltaTime
         a.y += a.vy * deltaTime
+
+        let newCords = worldWrap(a.x, a.y)
+        a.x = newCords[0]
+        a.y = newCords[1]
 
         drawAsteroid(a)
     }
@@ -286,6 +365,10 @@ function draw(){
 
     shipEntity.x += shipEntity.vx * deltaTime
     shipEntity.y += shipEntity.vy * deltaTime
+
+    let newShipCords = worldWrap(shipEntity.x, shipEntity.y)
+    shipEntity.x = newShipCords[0]
+    shipEntity.y = newShipCords[1]
 
     //console.log(shipEntity)
 
