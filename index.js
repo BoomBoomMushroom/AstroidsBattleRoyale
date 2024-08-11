@@ -2,31 +2,38 @@ const deg2rad = Math.PI/180
 
 const canvas = document.getElementById('canvas')
 const ctx = canvas.getContext('2d')
-const pixelSize = 5
 
 ctx.globalCompositeOperation = 'destination-over';
+
+let worldPixelSize = Math.min(window.innerWidth, window.innerHeight)
+let worldSize = [worldPixelSize, worldPixelSize]
+canvas.width = worldPixelSize
+canvas.height = worldPixelSize
+canvas.style.left = ((window.innerWidth - worldPixelSize) / 2) + "px"
+
+const devResolution = 945
+let worldScale = worldPixelSize / devResolution
+
+const pixelSize = 5 * worldScale
+
 
 let imageAssets = {
     "ship": null,
     "shipThrust": null,
 }
-loadImage("./assets/ship.png", "ship", 0.15)
-loadImage("./assets/ship_thrust.png", "shipThrust", 0.15)
+loadImage("./assets/ship.png", "ship", 0.15*worldScale)
+loadImage("./assets/ship_thrust.png", "shipThrust", 0.15*worldScale)
 
-let shipColoredImages = {}
 let keyboard = {}
 let lastFrame = Date.now()
 
 let shipAccel = 3
 let maxSpeed = 300
-let minSpeed = 2
-let worldSize = [800, 800]
-canvas.width = worldSize[0]
-canvas.height = worldSize[1]
+let minSpeed = 0.5
 
 let rotateSpeed = 150
 let bulletSpeed = 300
-let asteroidSpeed = [150, 150]
+let asteroidSpeed = [100, 200] // 150 seems like a good speed
 let asteroidDetail = 12
 let maxAsteroidSplits = 3
 let shootCooldown = 0.25
@@ -35,11 +42,12 @@ let friction = 15
 
 let bullets = []
 let asteroids = []
+let shipExplosionEffects = []
 
 let mouse = {x: 0, y: 0}
 
 let shipEntity = {
-    x: 90, y: 90, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0, isThrusting: false
+    x: worldSize[0]/2, y: worldSize[1]/2, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0, isThrusting: false
 }
 
 function randomInt(min, max){
@@ -55,7 +63,7 @@ function shootBullet(x, y, angle){
         y: y,
         vx: (Math.cos(angle) * bulletSpeed),// + shipEntity.vx,
         vy: (Math.sin(angle) * bulletSpeed),// + shipEntity.vy,
-        lifespan: 10,
+        lifespan: 2.7,
     })
 }
 
@@ -89,14 +97,14 @@ function randomAsteroid(x, y, points=7, radius=10){
     return newAsteroid
 }
 
-function spawnRandomAsteroid(points=7){
+function spawnRandomAsteroid(points=7, radius=25){
     let spawnOnRoof = randomInt(0, 1) == 1
 
     let newAsteroid = randomAsteroid(
         spawnOnRoof ? (randomInt(0, worldSize[0])) : (randomInt(0, 1) == 0 ? 0 : worldSize[1]),
         spawnOnRoof == false ? (randomInt(0, worldSize[1])) : (randomInt(0, 1) == 0 ? 0 : worldSize[0]),
         points,
-        25,
+        radius,
     )
 
     asteroids.push(newAsteroid)
@@ -266,6 +274,34 @@ function worldWrap(x, y){
     return [x, y]
 }
 
+function spawnWaveOfAsteroids(){
+    let asteroidCount = randomInt(3, 12)
+    for(let i=0;i<asteroidCount; i++){
+        spawnRandomAsteroid(12, 25)
+    }
+}
+
+function playKillShipAnimation(x, y){
+    let amountOfLines = 3
+
+    for(let i=0;i<amountOfLines;i++){
+        let positionAngle = randomFloat(0, 360) * deg2rad
+        let positionRadius = randomFloat(5, 10)
+        let velocityAngle = randomFloat(0, 360) * deg2rad
+        let velocitySpeed = randomFloat(50, 60)
+
+        shipExplosionEffects.push({
+            x: x + Math.cos(positionAngle) * positionRadius,
+            y: y + Math.sin(positionAngle) * positionRadius,
+            vx: Math.cos(velocityAngle) * velocitySpeed,
+            vy: Math.sin(velocityAngle) * velocitySpeed,
+            offset: {x: randomInt(-pixelSize * 10, pixelSize * 10), y: randomInt(-pixelSize * 10, pixelSize * 10)},
+            lifespan: 2
+        })
+    }
+    console.log(shipExplosionEffects[0])
+}
+
 function draw(){
     let deltaTime = Date.now() - lastFrame
     deltaTime /= 1000 // get it in seconds; ex 800ms -> 0.8s
@@ -276,6 +312,27 @@ function draw(){
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     
+    for(let i=0; i<shipExplosionEffects.length; i++){
+        let effect = shipExplosionEffects[i]
+        effect.lifespan -= deltaTime
+
+        effect.x += effect.vx * deltaTime
+        effect.y += effect.vy * deltaTime
+
+        ctx.strokeStyle = "#FFFFFF"
+        ctx.lineWidth = 3
+
+        ctx.beginPath()
+        ctx.moveTo(effect.x, effect.y)
+        ctx.lineTo(effect.x + effect.offset.x, effect.y + effect.offset.y);
+        ctx.stroke()
+
+        if(effect.lifespan <= 0){
+            shipExplosionEffects.splice(i, 1)
+            i -= 1
+        }
+    }
+
     for(let i=0; i<bullets.length; i++){
         let b = bullets[i]
         b.x += b.vx * deltaTime
@@ -340,11 +397,23 @@ function draw(){
         drawAsteroid(a)
     }
 
+    if(asteroids.length <= 0){
+        spawnWaveOfAsteroids()
+    }
+
     if(keyboard["a"]){
         shipEntity.rotation -= rotateSpeed * deltaTime
     }
     else if(keyboard["d"]){
         shipEntity.rotation += rotateSpeed * deltaTime
+    }
+
+    if(keyboard["s"] && shipEntity.hyperspaceCooldown <= 0){
+        shipEntity.hyperspaceCooldown = hyperspaceCooldown
+        shipEntity.x = randomInt(0, worldSize[0] - imageAssets["ship"].width)
+        shipEntity.y = randomInt(0, worldSize[1] - imageAssets["ship"].height)
+        shipEntity.vx = 0
+        shipEntity.vy = 0
     }
 
     if(keyboard["w"]){
