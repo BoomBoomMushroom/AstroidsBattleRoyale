@@ -1,3 +1,13 @@
+// service worker for pwa
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js')
+        .then((registration) => {
+            //console.log('Service Worker registered with scope:', registration.scope);
+        }).catch((error) => {
+            //console.log('Service Worker registration failed:', error);
+        });
+}
+
 // sfx
 const shootSFX = new Howl({src: ["./assets/audio/fire.wav"]})
 const explodeSmallSFX = new Howl({src: ["./assets/audio/bangSmall.wav"]})
