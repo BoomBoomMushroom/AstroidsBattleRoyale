@@ -1,7 +1,8 @@
 {
     "name": "Atari Asteroids",
     "short_name": "Asteroids",
-    "start_url": "/index.html?home=true",
+    "description": "A recreation of Atari's Asteroids but multiplayer",
+    "start_url": "/index.html",
     "icons": [
         {
             "src": "assets/images/logo_96x96",
@@ -23,8 +24,7 @@
         }
     ],
     "theme_color": "#000000",
-    "background_color": "#FFFFFF",
+    "background_color": "#000000",
     "display": "standalone",
     "orientation": "landscape",
-    "prefer-related-application": false
 }
