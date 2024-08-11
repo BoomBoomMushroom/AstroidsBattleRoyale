@@ -4,6 +4,18 @@
     "start_url": "/index.html?home=true",
     "icons": [
         {
+            "src": "assets/images/logo_96x96",
+            "sizes": "96x96",
+            "type": "image/png",
+            "purpose": "maskable any"
+        },
+        {
+            "src": "assets/images/logo_192x192",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable any"
+        },
+        {
             "src": "assets/images/logo_512x512",
             "sizes": "512x512",
             "type": "image/png",
