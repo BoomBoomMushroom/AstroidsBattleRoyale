@@ -6,6 +6,7 @@
 <style>
     body{
         background-color: #111111;
+        user-select: none;
     }
     #canvas{
         margin: 0px;
@@ -13,9 +14,51 @@
         top: 0px;
         background-color: transparent;
     }
+    .controls{
+        margin: 0px;
+        position: absolute;
+        bottom: 0px;
+    }
+
+    .leftControls{
+        display: inline;
+    }
+
+    .rightControls{
+        display: inline;
+        right: 0px;
+    }
+
+    .controlButton{
+        background-color: #FF1010;
+        border-radius: 100%;
+        width: 100px;
+        height: 100px;
+        padding: 0px;
+    }
+    .controlButton img{
+        width: 80px;
+        height: 80px;
+    }
+
+    .hidden{
+        display: none;
+    }
 </style>
 
 <canvas id="canvas"></canvas>
+
+<div class="controls leftControls">
+    <button id="thrustButton" class="controlButton hidden"><img src="./assets/images/thrust.png"></button>
+    <br>
+    <button id="rotateLeft" class="controlButton hidden"><img src="./assets/images/left.png"></button>
+    <button id="rotateRight" class="controlButton hidden"><img src="./assets/images/right.png"></button>
+</div>
+
+<div class="controls rightControls">
+    <button id="hyperspaceButton" class="controlButton hidden"><img src="./assets/images/hyperspace.png"></button>
+    <button id="shootButton" class="controlButton hidden"><img src="./assets/images/shoot.png"></button>
+</div>
 
 <script src="./index.js"></script>
 <script src="./multiplayer.js"></script>

@@ -1,0 +1,18 @@
+{
+    "name": "Atari Asteroids",
+    "short_name": "Asteroids",
+    "start_url": "/index.html?home=true",
+    "icons": [
+        {
+            "src": "assets/images/logo_512x512",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable any"
+        }
+    ],
+    "theme_color": "#000000",
+    "background_color": "#FFFFFF",
+    "display": "standalone",
+    "orientation": "landscape",
+    "prefer-related-application": false
+}
