@@ -1,3 +1,10 @@
+// sfx
+const shootSFX = new Howl({src: ["./assets/fire.wav"]})
+const explodeSmallSFX = new Howl({src: ["./assets/bangSmall.wav"]})
+const explodeMediumSFX = new Howl({src: ["./assets/bangMedium.wav"]})
+const explodeLargeSFX = new Howl({src: ["./assets/bangLarge.wav"]})
+const thrustSFX = new Howl({src: ["./assets/thrust.wav"], loop: true})
+
 const deg2rad = Math.PI/180
 
 const canvas = document.getElementById('canvas')
@@ -39,6 +46,7 @@ let maxAsteroidSplits = 3
 let shootCooldown = 0.25
 let hyperspaceCooldown = 1
 let friction = 15
+let bulletLifespan = 2.7
 
 let bullets = []
 let asteroids = []
@@ -47,7 +55,15 @@ let shipExplosionEffects = []
 let mouse = {x: 0, y: 0}
 
 let shipEntity = {
-    x: worldSize[0]/2, y: worldSize[1]/2, vx: 0, vy: 0, rotation: 0, shootCooldown: 0, hyperspaceCooldown: 0, isThrusting: false
+    x: worldSize[0]/2,
+    y: worldSize[1]/2,
+    vx: 0,
+    vy: 0,
+    rotation: 0,
+    shootCooldown: 0,
+    hyperspaceCooldown: 0,
+    isThrusting: false,
+    died: false
 }
 
 function randomInt(min, max){
@@ -63,7 +79,7 @@ function shootBullet(x, y, angle){
         y: y,
         vx: (Math.cos(angle) * bulletSpeed),// + shipEntity.vx,
         vy: (Math.sin(angle) * bulletSpeed),// + shipEntity.vy,
-        lifespan: 2.7,
+        lifespan: bulletLifespan,
     })
 }
 
@@ -239,6 +255,7 @@ function rotatePoint(point, pivotPoint, angle = 0){
 
 function getShipHitboxPoints(shipData){
     let shipImage = imageAssets["ship"]
+    if(shipImage == null){ return null }
     let shipImageWidth = shipImage.width
     let shipImageHeight = shipImage.height
 
@@ -299,7 +316,8 @@ function playKillShipAnimation(x, y){
             lifespan: 2
         })
     }
-    console.log(shipExplosionEffects[0])
+
+    explodeLargeSFX.play()
 }
 
 function draw(){
@@ -351,6 +369,16 @@ function draw(){
         // check if we hit an asteroid
         let didRemoveBullet = false
 
+        if(b.lifespan < bulletLifespan-0.2 && shipEntity.died == false){
+            let shipHitbox = getShipHitboxPoints(shipEntity)
+            if(pointInTriangle(b, shipHitbox[0], shipHitbox[1], shipHitbox[2]) && shipHitbox != null){
+                didRemoveBullet = true
+                shipEntity.died = true
+                playKillShipAnimation(shipEntity.x, shipEntity.y)
+            }
+        }
+        if(didRemoveBullet){continue}
+
         for(let j=0; j<asteroids.length; j++){
             let offset = {x: asteroids[j].x, y: asteroids[j].y}
             let collision = pointInPolygon(b, asteroids[j].points, offset)
@@ -359,6 +387,9 @@ function draw(){
 
                 // spawn 2 new smaller asteroids
                 let newSplits = asteroids[j].splits + 1
+
+                let sfx = newSplits == 1 ? explodeLargeSFX : (newSplits == 2 ? explodeMediumSFX : explodeSmallSFX)
+                sfx.play()
                 for(let i=0; i<2; i++){
                     if(newSplits >= maxAsteroidSplits){ continue }
                     let newAsteroid = randomAsteroid(
@@ -394,6 +425,19 @@ function draw(){
         a.x = newCords[0]
         a.y = newCords[1]
 
+        if(shipEntity.died == false){
+            let shipHitbox = getShipHitboxPoints(shipEntity)
+            for(let j=0; j<a.points.length; j++){
+                if(shipHitbox == null){break}
+                let point = {x: a.points[j].x + a.x, y: a.points[j].y + a.y}
+                if(pointInTriangle(point, shipHitbox[0], shipHitbox[1], shipHitbox[2])){
+                    shipEntity.died = true
+                    playKillShipAnimation(shipEntity.x, shipEntity.y)
+                    break
+                }
+            }
+        }
+
         drawAsteroid(a)
     }
 
@@ -417,10 +461,14 @@ function draw(){
     }
 
     if(keyboard["w"]){
+        if(shipEntity.isThrusting == false){ thrustSFX.play() }
         shipEntity.isThrusting = true
         shipEntity.vx += Math.cos( (shipEntity.rotation - 90) * deg2rad ) * shipAccel
         shipEntity.vy += Math.sin( (shipEntity.rotation - 90) * deg2rad ) * shipAccel
-    } else{ shipEntity.isThrusting = false }
+    } else{
+        shipEntity.isThrusting = false
+        thrustSFX.stop()
+    }
     
     // Slow ship down with friction, max speed, and move ship based of velocity
     if(shipEntity.vx != 0){ shipEntity.vx += friction * -Math.sign(shipEntity.vx) * deltaTime }
@@ -441,7 +489,7 @@ function draw(){
 
     //console.log(shipEntity)
 
-    if(imageAssets["ship"] != null){
+    if(imageAssets["ship"] != null && shipEntity.died == false){
         drawShip(shipEntity)
 
         // the image is rotated by 90 degrees so add it to shoot and bullet calc
@@ -456,6 +504,7 @@ function draw(){
         if(keyboard[" "] && shipEntity.shootCooldown <= 0){
             shipEntity.shootCooldown = shootCooldown
             shootBullet(bulletShotPosition.x - (pixelSize/2), bulletShotPosition.y - (pixelSize/2), shootAngle)
+            shootSFX.play()
         }
     }
 
