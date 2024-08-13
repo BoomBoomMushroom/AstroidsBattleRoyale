@@ -304,7 +304,7 @@ function worldWrap(x, y){
 function spawnWaveOfAsteroids(){
     let asteroidCount = randomInt(3, 12)
     for(let i=0;i<asteroidCount; i++){
-        spawnRandomAsteroid(12, 25)
+        spawnRandomAsteroid(12, 25 * worldScale)
     }
 }
 
@@ -451,7 +451,7 @@ function draw(){
         drawAsteroid(a)
     }
 
-    if(asteroids.length <= 0){
+    if(asteroids.length <= 0 && gameStarted == true){
         spawnWaveOfAsteroids()
     }
 
